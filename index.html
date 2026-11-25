@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>逆算タイマー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: やさしく、迷わせない。朝のバタバタ中でも一目で分かる道具
+   IDEA: 赤い円盤が減っていくキッチンタイマー＋駅の時刻表
+   PICTURE: 準備中は大きな円盤が主役、設定中は時刻がぶら下がる逆算リスト
+   COLOUR and TYPE: 白地・墨色・トマト赤の円盤、次の予定にひまわり黄 / M PLUS Rounded 1c + Outfit（数字）
+   LAYOUT: 1カラム、最大640px。上から ゴール → 予定リスト → 開始ボタン */
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,#15171c);--ink:light-dark(#1d2027,#eef0f3);--sub:light-dark(#6a707c,#9aa1ad);
+--line:light-dark(#e6e8ec,#2a2e36);--card:light-dark(#f5f6f8,#1e2128);--track:light-dark(#eceef1,#262a32);
+--red:#ff5a3c;--yel:#ffc21a;--grn:#21a67a;--late:#e0263a}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "M PLUS Rounded 1c",system-ui,sans-serif;overflow-x:clip}
+main{max-width:640px;margin:0 auto;padding:clamp(20px,4vw,40px) max(4vw,16px) 64px}
+h1{font-size:22px;margin:0 0 18px;font-weight:800;letter-spacing:.02em}
+h1 small{font-size:13px;color:var(--sub);font-weight:500;margin-left:8px}
+.num{font-family:Outfit,"M PLUS Rounded 1c",sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
+input,select,button{font:inherit;font-size:16px;color:inherit}
+input,select{background:var(--card);border:1.5px solid transparent;border-radius:12px;padding:10px 12px;min-height:44px}
+input:focus,select:focus{outline:none;border-color:var(--red)}
+button{cursor:pointer;border:0;border-radius:12px;min-height:44px;padding:0 16px;background:var(--card);font-weight:700}
+button:focus-visible{outline:3px solid var(--yel);outline-offset:2px}
+.primary{background:var(--red);color:#fff;width:100%;min-height:60px;font-size:20px;border-radius:16px}
+.goal{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;background:var(--ink);color:var(--bg);border-radius:18px;padding:16px}
+.goal input{background:color-mix(in srgb,var(--bg) 14%,transparent);color:var(--bg)}
+.goal .t{font-size:28px;font-family:Outfit,sans-serif;width:150px;font-weight:700}
+.goal label{font-size:13px;opacity:.75;grid-column:1/-1;margin-bottom:-6px}
+.opts{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0;color:var(--sub);font-size:14px}
+.status{border-radius:14px;padding:12px 16px;margin:0 0 14px;font-weight:700}
+.ok{background:color-mix(in srgb,var(--grn) 14%,transparent);color:var(--grn)}
+.ng{background:color-mix(in srgb,var(--late) 13%,transparent);color:var(--late)}
+ol.steps{list-style:none;margin:0 0 12px;padding:0}
+ol.steps li{display:grid;grid-template-columns:62px minmax(0,1fr) 74px auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.at{font-size:20px;font-weight:700;text-align:right;padding-right:4px}
+.min{text-align:right}
+.mv{display:flex;gap:2px}.mv button{padding:0;width:36px;background:none;color:var(--sub);font-size:18px}
+.end{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:10px 0;font-weight:800}
+.end .at{color:var(--red)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.row button{flex:1 1 auto}
+.tpl{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.tpl span{display:inline-flex;align-items:center;background:var(--card);border-radius:999px;padding-left:14px}
+.tpl button{background:none;min-height:40px;padding:0 10px;font-weight:500}
+.tpl .x{color:var(--sub);padding:0 12px 0 4px}
+.note{font-size:13px;color:var(--sub);margin-top:18px}
+.syncbar{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin:0 0 14px}
+.syncbar button{min-height:40px;font-size:14px}
+.sync{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub);margin:0;min-height:22px}
+.sync::before{content:"";width:9px;height:9px;border-radius:50%;background:#b8bec8;flex:none}
+.sync.on::before{background:var(--grn)}.sync.busy::before{background:var(--yel)}.sync.err::before{background:var(--late)}
+/* run */
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.top b{font-size:17px}
+.bar{height:10px;border-radius:9px;background:var(--track);overflow:hidden;margin:8px 0 22px}
+.bar i{display:block;height:100%;background:var(--ink);border-radius:9px;transition:width .5s}
+.now{text-align:center;font-size:clamp(30px,8vw,44px);font-weight:800;line-height:1.15;margin:0 0 16px;text-wrap:balance}
+.ring{--p:1;--c:var(--red);width:min(78vw,340px);aspect-ratio:1;margin:0 auto;border-radius:50%;
+background:conic-gradient(var(--c) calc(var(--p)*1turn),var(--track) 0);display:grid;place-items:center;
+box-shadow:0 18px 40px -22px color-mix(in srgb,var(--c) 70%,transparent)}
+.ring .in{width:70%;aspect-ratio:1;border-radius:50%;background:var(--bg);display:grid;place-content:center;text-align:center}
+.left{font-size:clamp(40px,12vw,64px);font-weight:700;line-height:1}
+.until{color:var(--sub);font-size:14px;margin-top:6px}
+.ring.over{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(.97)}}
+@media(prefers-reduced-motion:reduce){.ring.over{animation:none}.bar i{transition:none}}
+.msg{text-align:center;font-weight:700;min-height:1.6em;margin:16px 0 4px}
+.next{text-align:center;margin:0 0 18px}
+.next span{background:var(--yel);color:#1d2027;border-radius:999px;padding:4px 14px;font-weight:700}
+.done{background:var(--grn);color:#fff;width:100%;min-height:72px;font-size:22px;border-radius:18px}
+.mini{list-style:none;padding:0;margin:22px 0 0;font-size:15px}
+.mini li{display:grid;grid-template-columns:24px 56px minmax(0,1fr);gap:6px;padding:5px 0;color:var(--sub)}
+.mini li.cur{color:var(--ink);font-weight:800}
+.mini li.ok s{color:var(--sub)}
+.fin{text-align:center;padding:30px 0}
+.fin .big{font-size:clamp(34px,9vw,48px);font-weight:800;margin:10px 0}
+/* streak & records */
+.streak{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--card);border-radius:16px;padding:12px 16px;margin:0 0 16px}
+.streak b{font-size:20px}.streak small{color:var(--sub);display:block;font-size:13px}
+.medal{position:relative;width:88px;aspect-ratio:1;border-radius:50%;flex:none;padding:7px;
+background:radial-gradient(circle at 35% 30%,#fff2b8,#ffc21a 50%,#d99600);
+box-shadow:inset 0 -4px 0 rgba(0,0,0,.12),0 8px 18px -8px rgba(217,150,0,.8)}
+.medal svg{display:block;width:100%;height:100%;border-radius:50%;background:#fff8e3}
+.medal .rib{position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);background:var(--red);color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.medal.r0{background:radial-gradient(circle at 35% 30%,#ffffff,#e9e2d4 55%,#c8bda8)}
+.medal.r1{background:radial-gradient(circle at 35% 30%,#ffd9b5,#cd7f45 50%,#8a4a22);box-shadow:inset 0 -4px 0 rgba(0,0,0,.15),0 8px 18px -8px rgba(160,80,30,.8)}
+.medal.r2{background:radial-gradient(circle at 35% 30%,#ffffff,#c7cfd8 50%,#7f8b99);box-shadow:inset 0 -4px 0 rgba(0,0,0,.12),0 8px 18px -8px rgba(90,105,125,.8)}
+.medal.r1 .rib{background:#a65a2a}.medal.r2 .rib{background:#66727f}.medal.r3 .rib{background:#c98a00}
+.medal.sp{background:conic-gradient(#ff5a3c,#ffc21a,#21a67a,#3d8bff,#a05cff,#ff5a3c);box-shadow:0 10px 26px -8px rgba(160,92,255,.7)}
+.medal.sp svg{background:#fffdf3}.medal.sp .rib{background:#6b3cff}
+.medal.big{width:156px;padding:10px;margin:18px auto 22px}.medal.big .rib{font-size:15px;padding:4px 14px;bottom:-13px}
+.medals figure{width:96px}
+.tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0 0}
+.tabs button{display:flex;flex-direction:column;align-items:center;gap:0;padding:6px 4px;font-size:17px;border:2px solid transparent;line-height:1.3}
+.tabs button small{font-size:12px;color:var(--sub);font-weight:500}
+.tabs button[aria-selected=true]{background:var(--sc);color:#fff;border-color:var(--sc)}.tabs button[aria-selected=true] small{color:#fff}
+.zk{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin:10px 0 8px}
+.zk article{background:var(--card);border-radius:16px;padding:12px;text-align:center}
+.zk svg{width:84px;height:84px;display:block;margin:0 auto 4px}
+.zk .sil svg{filter:brightness(0);opacity:.18}
+.zk .sil .medal svg{background:none}
+.zk h3{font-size:16px;margin:0}.zk p{font-size:13px;color:var(--sub);margin:4px 0 0;line-height:1.5}
+.zk .cnt{font-size:12px;color:var(--sub)}
+.zk .medal{width:100px;margin:0 auto 8px}.zk .medal svg{width:100%;height:100%;margin:0}
+.zk .sil .medal{background:var(--track)!important;box-shadow:none}
+.zk .rk{display:inline-block;font-size:12px;font-weight:800;border-radius:999px;padding:1px 8px;margin-top:6px;color:#fff;background:#b3a98f}
+.zk .rk.r1{background:#a65a2a}.zk .rk.r2{background:#66727f}.zk .rk.r3{background:#c98a00}
+.zk .spc{grid-column:1/-1;background:linear-gradient(var(--card),var(--card)) padding-box,conic-gradient(#ff5a3c,#ffc21a,#21a67a,#3d8bff,#a05cff,#ff5a3c) border-box;border:3px solid transparent;display:grid;grid-template-columns:100px minmax(0,1fr);gap:12px;align-items:center;text-align:left}
+.zk .spc .medal{width:100px;margin:0}
+.get{font-weight:800;font-size:19px;margin:0 0 4px}.get em{font-style:normal;background:var(--red);color:#fff;border-radius:6px;padding:0 6px;font-size:13px;margin-left:6px;vertical-align:2px}
+.medals{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 24px}
+.medals figure{margin:0;text-align:center;font-size:12px;color:var(--sub)}
+.medals figure .medal{margin:0 auto 14px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin:10px 0 6px;text-align:center}
+.cal .h{font-size:12px;color:var(--sub)}
+.cal .d{aspect-ratio:1;border-radius:10px;background:var(--track);display:grid;place-items:center;font-size:14px;color:var(--sub)}
+.cal .d.on{background:var(--grn);color:#fff;font-weight:700}
+.cal .d.lt{background:var(--yel);color:#1d2027;font-weight:700}
+.cal .d.today{outline:2px solid var(--ink);outline-offset:1px}
+.legend{font-size:13px;color:var(--sub);display:flex;gap:14px;flex-wrap:wrap}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:4px;vertical-align:-1px;margin-right:4px}
+.big3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:8px 0 20px}
+.big3 div{background:var(--card);border-radius:14px;padding:12px;text-align:center}
+.big3 b{display:block;font-size:28px;font-family:Outfit,sans-serif}.big3 span{font-size:13px;color:var(--sub)}
+h2{font-size:17px;margin:22px 0 4px}
+.log{list-style:none;padding:0;margin:8px 0}
+.log li{display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
+.log .g{font-weight:700}.log .g.ok{color:var(--grn)}.log .g.lt{color:#b07d00}
+.empty{color:var(--sub);padding:12px 0}
+/* background */
+:root{--g1:#ffe0d2;--g2:#fff3df;--g3:#ffe9e4;--sc:#e8702a;--base:light-dark(#fff8f1,#17151c);
+--panel:light-dark(rgba(255,255,255,.5),rgba(28,27,36,.6));--card:light-dark(rgba(255,255,255,.9),rgba(44,44,56,.85))}
+:root[data-season=spring]{--g1:light-dark(#ffd9e6,#4a2436);--g2:light-dark(#fff4dd,#2d2a20);--g3:light-dark(#e2f4ff,#1c2c3d);--sc:#ff7fa8;--base:light-dark(#fff7fa,#1a1620)}
+:root[data-season=summer]{--g1:light-dark(#d4f1ff,#173246);--g2:light-dark(#fff8cf,#2e2b18);--g3:light-dark(#dcfbef,#163329);--sc:#2a9df4;--base:light-dark(#f5fcff,#121a22)}
+:root[data-season=autumn]{--g1:light-dark(#ffe0c7,#45281a);--g2:light-dark(#fff1d6,#2f2618);--g3:light-dark(#ffe2dc,#3a1f22);--sc:#e8702a;--base:light-dark(#fff8f1,#1b1612)}
+:root[data-season=winter]{--g1:light-dark(#dfe8ff,#1d2747);--g2:light-dark(#f1ebff,#29223f);--g3:light-dark(#e6f7ff,#16293a);--sc:#5b7fc4;--base:light-dark(#f8faff,#13151f)}
+body{background:radial-gradient(circle at 12% 8%,var(--g1),transparent 42%),radial-gradient(circle at 92% 28%,var(--g3),transparent 40%),radial-gradient(circle at 40% 100%,var(--g2),transparent 55%),var(--base);background-attachment:fixed;padding:0 8px}
+.deco{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.deco::before{content:"";position:absolute;inset:0;background-image:radial-gradient(color-mix(in srgb,var(--sc) 30%,transparent) 1.3px,transparent 1.8px);background-size:24px 24px;opacity:.45}
+.deco svg{position:absolute;opacity:.85;transform:rotate(var(--r));animation:fl 10s ease-in-out infinite}
+@keyframes fl{50%{transform:translateY(-16px) rotate(calc(var(--r) + 14deg))}}
+@media(prefers-reduced-motion:reduce){.deco svg{animation:none}}
+main{position:relative;z-index:1;margin:clamp(10px,3vw,32px) auto;background:var(--panel);border-radius:30px;border:1px solid light-dark(rgba(255,255,255,.9),rgba(255,255,255,.06));
+box-shadow:0 24px 60px -30px color-mix(in srgb,var(--sc) 60%,transparent);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+h1{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 0}
+h1::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--sc);margin-right:16px;align-self:center;box-shadow:9px -7px 0 -3px var(--red)}
+ol.steps li{border-bottom-color:color-mix(in srgb,var(--sc) 18%,transparent)}
+.goal{background:linear-gradient(135deg,var(--sc),color-mix(in srgb,var(--sc) 62%,#4a2a7a));color:#fff;box-shadow:0 14px 30px -18px var(--sc)}
+.goal input{background:rgba(255,255,255,.24);color:#fff}.goal input::placeholder{color:rgba(255,255,255,.7)}
+[hidden]{display:none!important}
+@media(max-width:600px){ol.steps li{grid-template-columns:52px minmax(0,1fr) 62px auto}.at{font-size:17px}.mv button{width:32px}}
+</style>
+</head>
+<body>
+<main>
+<div class="syncbar"><p class="sync" id="sync" role="status">アカウントを確認しています…</p><button id="authBtn" hidden></button></div>
+<section id="setup">
+  <h1>逆算タイマー<small>ゴールから逆算して、残り時間を見ながら準備</small></h1>
+  <div class="streak"><div><b id="sNow"></b><small id="sNext"></small></div><button id="openRec">記録を見る</button></div>
+  <div class="goal">
+    <label for="gt">ゴールの時刻と内容</label>
+    <input id="gt" class="t" type="time" required>
+    <input id="gl" type="text" placeholder="例：家を出る" maxlength="20">
+  </div>
+  <div class="opts">
+    <label for="buf">最後の余裕</label>
+    <select id="buf"><option value="0">なし</option><option value="5">5分</option><option value="10">10分</option><option value="15">15分</option></select>
+    <span id="day"></span>
+  </div>
+  <div id="status" class="status"></div>
+  <ol class="steps" id="steps"></ol>
+  <div class="end"><div class="at num" id="endAt"></div><div id="endLabel"></div></div>
+  <div class="row"><button id="add">＋ 予定を追加</button><button id="saveTpl">いまの内容を保存</button></div>
+  <div class="tpl" id="tpls"></div>
+  <div class="row" style="margin-top:22px"><button class="primary" id="start">スタート</button></div>
+  <div class="row"><button id="notif" hidden>時間切れを通知でも知らせる</button></div>
+  <p class="note">Googleでログインすると、予定・記録・バッジ・図鑑が自動でアカウントに保存され、スマホとパソコンなど別の端末からも続きを使えます。画面を閉じても、実行中の予定は再開できます。準備を最後まで終えた日が記録され、7日続くごとにバッジが付きます。最初の内容はサンプルです。</p>
+</section>
+
+<section id="run" hidden>
+  <div class="top"><b id="rGoal"></b><span class="num" id="rGoalLeft"></span></div>
+  <div class="bar"><i id="rBar"></i></div>
+  <p class="now" id="rName"></p>
+  <div class="ring" id="ring"><div class="in"><div class="left num" id="rLeft"></div><div class="until" id="rUntil"></div></div></div>
+  <p class="msg" id="rMsg"></p>
+  <p class="next" id="rNext"></p>
+  <button class="done" id="doneBtn">✓ 終わった！</button>
+  <div class="row"><button id="undo">ひとつ戻す</button><button id="stop">やめる</button></div>
+  <ul class="mini" id="mini"></ul>
+</section>
+
+<section id="fin" hidden class="fin">
+  <p>準備完了</p>
+  <p class="big" id="fBig"></p>
+  <p id="fSub"></p>
+  <div id="fBadge"></div>
+  <p id="fStreak"></p>
+  <div class="row"><button class="primary" id="back">最初の画面に戻る</button></div>
+  <div class="row"><button id="finRec">記録を見る</button></div>
+</section>
+
+<section id="rec" hidden>
+  <div class="top"><h1 style="margin:0">記録</h1><button id="recBack">← もどる</button></div>
+  <div class="big3">
+    <div><b id="rcStreak"></b><span>いまの連続日数</span></div>
+    <div><b id="rcBest"></b><span>最長の連続日数</span></div>
+    <div><b id="rcDays"></b><span>達成した日の合計</span></div>
+  </div>
+  <h2>1週間達成バッジ</h2>
+  <div class="medals" id="rcMedals"></div>
+  <h2>キャラクター図鑑 <span class="num" id="zkCount" style="color:var(--sub);font-size:14px;font-weight:500"></span></h2>
+  <div class="tabs" id="zkTabs" role="tablist" aria-label="シーズン"></div>
+  <p class="note" id="zkNote" style="margin:8px 0 0"></p>
+  <div class="zk" id="zk"></div>
+  <h2>最近5週間</h2>
+  <div class="cal" id="rcCal"></div>
+  <div class="legend"><span><i style="background:var(--grn)"></i>時間内に完了</span><span><i style="background:var(--yel)"></i>完了（遅れあり）</span><span><i style="background:var(--track)"></i>記録なし</span></div>
+  <h2>これまでの記録</h2>
+  <ul class="log" id="rcLog"></ul>
+</section>
+</main>
+
+<script>
+{
+const $=s=>document.querySelector(s);
+const KEY='gyakusan-timer-v1';
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const hm=ms=>{const d=new Date(ms);return d.getHours()+':'+pad(d.getMinutes())};
+const mmss=sec=>{sec=Math.max(0,Math.ceil(sec));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?h+':'+pad(m)+':'+pad(s):m+':'+pad(s)};
+const mins=ms=>Math.ceil(ms/60000);
+
+const sample=()=>({goalTime:'08:30',goalLabel:'家を出る',buffer:5,steps:[
+ {name:'起きてぼーっとする',min:5},{name:'顔を洗う',min:5},{name:'着替え',min:10},
+ {name:'朝ごはん',min:15},{name:'歯みがき',min:5},{name:'持ち物チェック',min:5}],templates:[],run:null});
+let D;
+try{D=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!D||!Array.isArray(D.steps))D=sample();
+D.log=D.log||[];D.badges=D.badges||[];
+const save=()=>{D.updatedAt=Date.now();try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){}push()};
+let push=()=>{};
+
+/* ---------- streak ---------- */
+const dkey=ms=>{const d=new Date(ms);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
+const addDays=(ms,n)=>{const d=new Date(ms);d.setDate(d.getDate()+n);return d.getTime()};
+const daySet=()=>new Set(D.log.map(l=>l.date));
+function streak(){
+  const set=daySet();let d=Date.now();
+  if(!set.has(dkey(d)))d=addDays(d,-1);
+  let n=0;while(set.has(dkey(d))){n++;d=addDays(d,-1)}
+  return n;
+}
+function bestStreak(){
+  const ds=[...daySet()].sort();let best=0,run=0,prev=null;
+  ds.forEach(k=>{const t=new Date(k+'T00:00').getTime();run=prev!==null&&dkey(addDays(prev,1))===k?run+1:1;best=Math.max(best,run);prev=t});
+  return best;
+}
+/* ---------- characters ---------- */
+const INK='#2a2320';
+const eyes=(x,y,k=1)=>`<circle cx="${x-9*k}" cy="${y}" r="${3.4*k}" fill="${INK}"/><circle cx="${x+9*k}" cy="${y}" r="${3.4*k}" fill="${INK}"/><circle cx="${x-8*k}" cy="${y-1.3*k}" r="${1.1*k}" fill="#fff"/><circle cx="${x+10*k}" cy="${y-1.3*k}" r="${1.1*k}" fill="#fff"/>`;
+const sleepy=(x,y)=>`<path d="M${x-13} ${y} q4 3 8 0 M${x+5} ${y} q4 3 8 0" stroke="${INK}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
+const cheeks=(x,y,w=15)=>`<ellipse cx="${x-w}" cy="${y+5}" rx="4.5" ry="3" fill="#ff7f8a" opacity=".5"/><ellipse cx="${x+w}" cy="${y+5}" rx="4.5" ry="3" fill="#ff7f8a" opacity=".5"/>`;
+const smile=(x,y)=>`<path d="M${x-4} ${y+6} q4 4.5 8 0" stroke="${INK}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+const face=(x,y,o={})=>(o.sleep?sleepy(x,y):eyes(x,y,o.k||1))+cheeks(x,y,o.w)+(o.mouth===false?'':smile(x,y));
+const shadow=(rx=26)=>`<ellipse cx="50" cy="90" rx="${rx}" ry="4" fill="#000" opacity=".1"/>`;
+const shine=(x,y,rx=7,ry=4,r=-30)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#fff" opacity=".45" transform="rotate(${r} ${x} ${y})"/>`;
+const SEASONS=[
+ {id:'spring',name:'春',months:'3〜5月',col:'#ff7fa8'},
+ {id:'summer',name:'夏',months:'6〜8月',col:'#2a9df4'},
+ {id:'autumn',name:'秋',months:'9〜11月',col:'#e8702a'},
+ {id:'winter',name:'冬',months:'12〜2月',col:'#5b7fc4'}];
+const seasonOf=ms=>{const m=new Date(ms).getMonth()+1;return m>=3&&m<=5?'spring':m<=8&&m>=6?'summer':m>=9&&m<=11?'autumn':'winter'};
+const seasonBy=id=>SEASONS.find(x=>x.id===id)||SEASONS[0];
+const rot=(n,f)=>[...Array(n)].map((_,i)=>f(i*360/n,i)).join('');
+const CH=[
+ /* ---- 春 ---- */
+ {id:'mebuki',season:'spring',name:'めぶき',desc:'小さな芽。一日ずつ続けるたびに、ほんの少しずつ背がのびていく。',
+  svg:()=>shadow(24)+`<path d="M50 44 V26" stroke="#3f9a45" stroke-width="4" stroke-linecap="round"/><ellipse cx="40" cy="24" rx="11" ry="6" fill="#4caf50" transform="rotate(-25 40 24)"/><ellipse cx="60" cy="22" rx="11" ry="6" fill="#66c26a" transform="rotate(25 60 22)"/><ellipse cx="50" cy="64" rx="25" ry="23" fill="#9bd672"/>`+shine(40,52)+face(50,64)},
+ {id:'piyo',season:'spring',name:'ぴよクロック',desc:'おなかが時計になっているひよこ。時間になると「ぴよっ」と知らせてくれる。',
+  svg:()=>shadow(26)+`<path d="M46 26 q2-9 6-4 q3-6 5 3" fill="#ffc21a"/><ellipse cx="50" cy="58" rx="28" ry="28" fill="#ffd84a"/><ellipse cx="25" cy="60" rx="5" ry="10" fill="#ffc21a" transform="rotate(20 25 60)"/><ellipse cx="75" cy="60" rx="5" ry="10" fill="#ffc21a" transform="rotate(-20 75 60)"/>`+shine(38,42)+`<circle cx="50" cy="69" r="11" fill="#fff"/><path d="M50 69 V62 M50 69 h5" stroke="${INK}" stroke-width="2" stroke-linecap="round"/><path d="M46 54 l4 4 l4-4z" fill="#ff8a2a"/>`+eyes(50,47,.9)+cheeks(50,47,17)},
+ {id:'sakura',season:'spring',name:'さくらん',desc:'春風にのってやってくる桜の花。新しいことを始める人を応援している。',
+  svg:()=>shadow(22)+rot(5,a=>`<ellipse cx="50" cy="30" rx="13" ry="18" fill="#ffc2d4" transform="rotate(${a} 50 52)"/><path d="M50 13 l-3 5 h6z" fill="#fff8fa" transform="rotate(${a} 50 52)"/>`)+`<circle cx="50" cy="52" r="16" fill="#ffe1ea"/>`+face(50,51,{k:.8,w:10})},
+ {id:'ichigo',season:'spring',name:'いちごん',desc:'あまずっぱいいちご。つぶつぶの数だけ、がんばった朝があるらしい。',
+  svg:()=>shadow(22)+`<path d="M50 88 C28 80 18 60 23 44 C28 30 72 30 77 44 C82 60 72 80 50 88Z" fill="#ff4d5e"/>`+[[34,48],[66,48],[30,62],[70,62],[40,76],[60,76],[50,80]].map(([x,y])=>`<ellipse cx="${x}" cy="${y}" rx="1.6" ry="2.4" fill="#ffe27a"/>`).join('')+rot(5,a=>`<ellipse cx="50" cy="28" rx="5" ry="10" fill="#3fae4f" transform="rotate(${a} 50 34)"/>`)+shine(36,46)+face(50,58)},
+ {id:'hirari',season:'spring',name:'ひらり',desc:'花から花へとまう、ちょうちょ。予定の切りかえがとっても上手。',
+  svg:()=>shadow(18)+`<ellipse cx="30" cy="40" rx="18" ry="15" fill="#ffd23f" transform="rotate(-20 30 40)"/><ellipse cx="70" cy="40" rx="18" ry="15" fill="#ffd23f" transform="rotate(20 70 40)"/><ellipse cx="33" cy="66" rx="12" ry="10" fill="#ffa0c2" transform="rotate(20 33 66)"/><ellipse cx="67" cy="66" rx="12" ry="10" fill="#ffa0c2" transform="rotate(-20 67 66)"/><circle cx="28" cy="40" r="5" fill="#fff" opacity=".7"/><circle cx="72" cy="40" r="5" fill="#fff" opacity=".7"/><path d="M45 24 q-4-10-10-12 M55 24 q4-10 10-12" stroke="${INK}" stroke-width="2" fill="none" stroke-linecap="round"/><ellipse cx="50" cy="62" rx="7" ry="18" fill="#7a5a44"/><circle cx="50" cy="36" r="13" fill="#9a7458"/>`+face(50,36,{k:.6,w:8})},
+ {id:'tsukushi',season:'spring',name:'つくしん',desc:'土手からひょっこり顔を出すつくし。ちょっとずつでも前に進むのが信条。',
+  svg:()=>shadow(16)+`<rect x="45" y="50" width="10" height="38" rx="5" fill="#e8d9a8"/><path d="M45 64 h10 M45 76 h10" stroke="#a5895a" stroke-width="2.5"/><path d="M38 66 l7 -3 M62 66 l-7 -3 M38 78 l7-3 M62 78 l-7-3" stroke="#a5895a" stroke-width="2.5" stroke-linecap="round"/><ellipse cx="50" cy="34" rx="16" ry="22" fill="#b9875a"/>`+[18,26,34,42].map(y=>`<path d="M37 ${y+6} q13 6 26 0" stroke="#8d6440" stroke-width="2" fill="none"/>`).join('')+face(50,30,{k:.75,w:10,mouth:false})},
+ /* ---- 夏 ---- */
+ {id:'asahi',season:'summer',name:'あさひ',desc:'朝いちばんに顔を出す、ぽかぽかのおひさま。早起きした日はとくにごきげん。',
+  svg:()=>shadow(22)+rot(8,a=>`<rect x="46.5" y="14" width="7" height="13" rx="3.5" fill="#ffc94a" transform="rotate(${a} 50 52)"/>`)+`<circle cx="50" cy="52" r="25" fill="#ff9f3a"/>`+shine(40,40)+face(50,52)},
+ {id:'shizuku',season:'summer',name:'しずく',desc:'顔を洗うとあらわれる水のつぶ。冷たいけれど、目がさっぱり覚める。',
+  svg:()=>shadow(22)+`<path d="M50 12 C60 30 76 44 76 62 A26 26 0 0 1 24 62 C24 44 40 30 50 12Z" fill="#5cb6ff"/>`+shine(38,50,6,9,20)+face(50,64)},
+ {id:'kakigori',season:'summer',name:'かきごおりん',desc:'いちごシロップのかき氷。暑い朝でも、ひとくちで気分がしゃっきり。',
+  svg:()=>shadow(20)+`<path d="M30 66 h40 l-8 22 h-24z" fill="#bfe6ff" opacity=".9"/><path d="M30 66 h40" stroke="#8ccff7" stroke-width="3"/><path d="M24 68 C22 40 40 26 50 26 C60 26 78 40 76 68Z" fill="#fff"/><path d="M28 52 C32 36 44 30 50 30 C58 30 70 38 73 52 C64 46 58 54 50 48 C42 54 36 46 28 52Z" fill="#ff5d7a"/>`+face(50,58,{k:.85,w:13})},
+ {id:'suika',season:'summer',name:'すいかっち',desc:'夏の主役のすいか。種の数をかぞえると、ちょっとだけ落ち着くらしい。',
+  svg:()=>shadow(28)+`<path d="M14 40 A36 36 0 0 0 86 40Z" fill="#3aa856"/><path d="M19 40 A31 31 0 0 0 81 40Z" fill="#f4ffe6"/><path d="M23 40 A27 27 0 0 0 77 40Z" fill="#ff5a64"/>`+[[34,48],[66,48],[42,58],[58,58]].map(([x,y])=>`<ellipse cx="${x}" cy="${y}" rx="1.8" ry="3" fill="${INK}"/>`).join('')+eyes(50,46,.8)+smile(50,46)},
+ {id:'asagao',season:'summer',name:'あさがお',desc:'朝にだけ花をひらく、はやおきの名人。夏休みの観察日記にもよく登場する。',
+  svg:()=>shadow(20)+`<path d="M50 80 q-14 6 -22 -4" stroke="#4caf50" stroke-width="3" fill="none"/><ellipse cx="28" cy="76" rx="9" ry="6" fill="#4caf50" transform="rotate(-30 28 76)"/><circle cx="50" cy="48" r="30" fill="#6a7dff"/>`+rot(5,a=>`<path d="M50 48 L50 20" stroke="#9aa8ff" stroke-width="3" transform="rotate(${a} 50 48)"/>`)+`<circle cx="50" cy="48" r="15" fill="#f4f5ff"/>`+face(50,47,{k:.75,w:10})},
+ {id:'furin',season:'summer',name:'ちりりん',desc:'のき先でゆれる風鈴。ちりんと鳴ったら、つぎの予定に進む合図。',
+  svg:()=>shadow(14)+`<path d="M50 10 V18" stroke="#9aa" stroke-width="2"/><path d="M26 58 C26 30 38 18 50 18 C62 18 74 30 74 58Z" fill="#cdeeff" opacity=".9"/><path d="M30 46 q10 -8 20 0 q10 8 20 0" stroke="#ff6a6a" stroke-width="3" fill="none"/><path d="M26 58 h48" stroke="#8ccff7" stroke-width="3" stroke-linecap="round"/><path d="M50 58 V68" stroke="#999" stroke-width="1.5"/><rect x="43" y="68" width="14" height="20" rx="2" fill="#ffe27a"/>`+shine(38,32,4,7,20)+eyes(50,40,.75)+smile(50,40)},
+ /* ---- 秋 ---- */
+ {id:'onigiri',season:'autumn',name:'おにぎりん',desc:'新米でにぎった三角おにぎり。忙しい朝でも片手で食べられるのが自慢。',
+  svg:()=>shadow(28)+`<path d="M50 16 C57 16 82 60 82 72 C82 84 74 86 50 86 C26 86 18 84 18 72 C18 60 43 16 50 16Z" fill="#fff" stroke="#e2e2e2" stroke-width="2.5"/><rect x="35" y="66" width="30" height="20" rx="3" fill="#2d3a40"/>`+face(50,50)},
+ {id:'toast',season:'autumn',name:'トースタン',desc:'こんがり焼けた食パン。頭のバターがとけきる前に食べてほしいらしい。',
+  svg:()=>{const p='M24 42 C16 22 38 14 50 24 C62 14 84 22 76 42 L76 82 Q76 88 70 88 L30 88 Q24 88 24 82Z';return shadow(26)+`<path d="${p}" fill="#c47f3c"/><path d="${p}" fill="#f7d898" transform="translate(50 56) scale(.84) translate(-50 -56)"/><rect x="42" y="22" width="16" height="11" rx="3" fill="#ffe66b" transform="rotate(-8 50 27)"/>`+face(50,60)}},
+ {id:'donguri',season:'autumn',name:'どんぐりー',desc:'公園でひろえるどんぐり。ぼうしがずれていないか、いつも気にしている。',
+  svg:()=>shadow(20)+`<ellipse cx="50" cy="62" rx="21" ry="25" fill="#c98a4b"/>`+shine(41,58,5,8,15)+`<path d="M26 46 C26 28 74 28 74 46 C66 50 34 50 26 46Z" fill="#7a5230"/><path d="M32 40 h36 M30 45 h40" stroke="#5c3d22" stroke-width="1.5" opacity=".6"/><path d="M50 30 v-8" stroke="#5c3d22" stroke-width="4" stroke-linecap="round"/>`+face(50,64)},
+ {id:'momiji',season:'autumn',name:'もみじー',desc:'まっかに色づいたもみじ。少しずつ色が変わるように、習慣も育っていく。',
+  svg:()=>shadow(22)+`<path d="M50 70 L54 90" stroke="#b33a1a" stroke-width="3.5" stroke-linecap="round"/>`+[-80,-40,0,40,80].map(a=>`<path d="M50 54 L44 ${a===0?18:26} L50 ${a===0?8:16} L56 ${a===0?18:26}Z" fill="#ff5a2a" stroke="#ff5a2a" stroke-width="8" stroke-linejoin="round" transform="rotate(${a} 50 54)"/>`).join('')+`<circle cx="50" cy="52" r="17" fill="#ff6a30"/>`+face(50,52,{k:.8,w:10})},
+ {id:'kuri',season:'autumn',name:'くりっぴ',desc:'ほくほくの栗。とげとげのいがから出てきたばかりで、ちょっと照れ屋。',
+  svg:()=>shadow(24)+`<path d="M50 18 C58 26 78 44 78 62 C78 80 66 86 50 86 C34 86 22 80 22 62 C22 44 42 26 50 18Z" fill="#8a4f2a"/><path d="M23 66 C30 76 70 76 77 66 C78 80 66 86 50 86 C34 86 22 80 23 66Z" fill="#e2c08f"/>`+shine(38,40,5,9,25)+face(50,56)},
+ {id:'kinoko',season:'autumn',name:'きのこん',desc:'森の切りかぶにはえる赤いきのこ。水玉もようがチャームポイント。',
+  svg:()=>shadow(22)+`<path d="M36 52 h28 v26 q0 10 -14 10 q-14 0 -14 -10z" fill="#fff3dc"/><path d="M14 54 C14 22 86 22 86 54 C70 60 30 60 14 54Z" fill="#ff4d4d"/><circle cx="34" cy="38" r="6" fill="#fff"/><circle cx="58" cy="32" r="5" fill="#fff"/><circle cx="72" cy="46" r="4" fill="#fff"/><circle cx="24" cy="50" r="3" fill="#fff"/>`+face(50,68,{k:.75,w:10})},
+ /* ---- 冬 ---- */
+ {id:'nebosuke',season:'winter',name:'ねぼすけぐも',desc:'ふわふわの雲。寒い朝はとくに眠そうだけど、二度寝しそうな人をそっと起こしてくれる。',
+  svg:()=>shadow(28)+`<circle cx="33" cy="60" r="15" fill="#e6ecfb"/><circle cx="50" cy="50" r="20" fill="#e6ecfb"/><circle cx="67" cy="60" r="15" fill="#e6ecfb"/><rect x="20" y="58" width="60" height="22" rx="11" fill="#e6ecfb"/><text x="72" y="30" font-size="15" font-weight="800" fill="#8a9ed8" font-family="Outfit,sans-serif">z</text><text x="82" y="20" font-size="10" font-weight="800" fill="#8a9ed8" font-family="Outfit,sans-serif">z</text>`+face(50,60,{sleep:1})},
+ {id:'migaki',season:'winter',name:'みがきん',desc:'ぴかぴかの歯。冷たい水でもがまんしてみがくと、きらりと光ってお礼を言う。',
+  svg:()=>shadow(20)+`<path d="M28 30 C28 18 42 15 50 22 C58 15 72 18 72 30 C72 48 68 56 66 76 C65 85 58 85 57 76 L54 63 Q50 58 46 63 L43 76 C42 85 35 85 34 76 C32 56 28 48 28 30Z" fill="#fff" stroke="#cfdbe6" stroke-width="2.5"/><path d="M80 14 l2 6 6 2 -6 2 -2 6 -2-6 -6-2 6-2z" fill="#7fd3ff"/>`+face(50,40,{w:13})},
+ {id:'yuki',season:'winter',name:'ゆきだるん',desc:'雪の朝にあらわれる雪だるま。マフラーは毎朝ちゃんと自分で巻いている。',
+  svg:()=>shadow(24)+`<circle cx="50" cy="68" r="21" fill="#fff" stroke="#dbe5f2" stroke-width="2"/><circle cx="50" cy="38" r="17" fill="#fff" stroke="#dbe5f2" stroke-width="2"/><path d="M33 52 q17 8 34 0 l1 6 q-18 8 -36 0z" fill="#ff5a5a"/><rect x="58" y="54" width="7" height="14" rx="2" fill="#ff5a5a"/><circle cx="50" cy="66" r="2.2" fill="#9ab"/><circle cx="50" cy="75" r="2.2" fill="#9ab"/><path d="M40 22 h20 l-3 -10 h-14z" fill="#3a4a6a"/>`+face(50,38,{k:.85,w:12})},
+ {id:'mikan',season:'winter',name:'みかんちゃん',desc:'こたつの上の定位置にいるみかん。ビタミンたっぷりで、冬の朝の元気担当。',
+  svg:()=>shadow(26)+`<circle cx="50" cy="56" r="28" fill="#ff9a1f"/>`+[[38,42],[64,46],[34,66],[66,68],[50,78]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="1.2" fill="#e07a00"/>`).join('')+`<path d="M50 30 v-6" stroke="#5a7a2a" stroke-width="3" stroke-linecap="round"/><ellipse cx="59" cy="24" rx="9" ry="5" fill="#4caf50" transform="rotate(-20 59 24)"/>`+shine(40,42)+face(50,58)},
+ {id:'pengin',season:'winter',name:'ぺんたろう',desc:'寒さに強いペンギン。よちよち歩きでも、遅刻したことは一度もない。',
+  svg:()=>shadow(22)+`<ellipse cx="50" cy="56" rx="26" ry="32" fill="#2e3f63"/><ellipse cx="26" cy="60" rx="6" ry="15" fill="#2e3f63" transform="rotate(20 26 60)"/><ellipse cx="74" cy="60" rx="6" ry="15" fill="#2e3f63" transform="rotate(-20 74 60)"/><ellipse cx="50" cy="62" rx="18" ry="24" fill="#fff"/><ellipse cx="41" cy="88" rx="7" ry="3.5" fill="#ffa52a"/><ellipse cx="59" cy="88" rx="7" ry="3.5" fill="#ffa52a"/><path d="M46 52 l4 5 l4 -5z" fill="#ffa52a"/>`+eyes(50,45,.85)+cheeks(50,45,13)},
+ {id:'tebukuro',season:'winter',name:'てぶくろん',desc:'あったかい毛糸の手ぶくろ。かたっぽだけになると、とてもさみしがる。',
+  svg:()=>shadow(22)+`<path d="M30 74 V42 C30 22 66 20 68 40 V50 C74 42 86 46 80 58 L70 72 V74Z" fill="#ff6b6b"/><path d="M36 34 h26 M34 44 h30" stroke="#ff9a9a" stroke-width="2" stroke-dasharray="3 3"/><rect x="27" y="72" width="46" height="16" rx="5" fill="#fff" stroke="#e6e6e6" stroke-width="2"/>`+face(48,54,{k:.85,w:12})},
+];
+const king=(body,ring,item)=>shadow(28)+`<circle cx="50" cy="58" r="30" fill="${body}"/><circle cx="50" cy="58" r="23" fill="#fffaf0"/>`+rot(12,(a,i)=>`<rect x="49" y="37" width="2" height="${i%3?3:5}" rx="1" fill="${ring}" transform="rotate(${a} 50 58)"/>`)+`<path d="M32 32 L36 14 L44 24 L50 9 L56 24 L64 14 L68 32Z" fill="#ffd23f" stroke="#c98a00" stroke-width="2" stroke-linejoin="round"/><circle cx="50" cy="22" r="3" fill="#ff5a3c"/><circle cx="38" cy="26" r="2" fill="#3d8bff"/><circle cx="62" cy="26" r="2" fill="#21a67a"/>`+face(50,58,{k:.85,w:12})+`<g transform="translate(-6 -9)">${item}</g>`;
+const SPS=[
+ {id:'king-spring',season:'spring',name:'さくらのおうさま',desc:'春の図鑑の仲間が全員そろうと姿を見せる時間の王さま。肩に桜の花をのせている。',
+  svg:()=>king('#ff9fbf','#e0628c',rot(5,a=>`<ellipse cx="80" cy="76" rx="4" ry="7" fill="#ffd0de" transform="rotate(${a} 80 82)"/>`)+`<circle cx="80" cy="82" r="3" fill="#ffe08a"/>`)},
+ {id:'king-summer',season:'summer',name:'なつぞらのおうさま',desc:'夏の図鑑の仲間が全員そろうと姿を見せる時間の王さま。ひまわりがお気に入り。',
+  svg:()=>king('#4fb8ff','#1f7fc4',rot(10,a=>`<ellipse cx="80" cy="74" rx="3.5" ry="7" fill="#ffd23f" transform="rotate(${a} 80 81)"/>`)+`<circle cx="80" cy="81" r="4.5" fill="#8a5a2a"/>`)},
+ {id:'king',season:'autumn',name:'もみじのおうさま',desc:'秋の図鑑の仲間が全員そろうと姿を見せる時間の王さま。もみじのマントがじまん。',
+  svg:()=>king('#ff8a3a','#c95a10',`<path d="M80 72 l3 7 7-1 -5 5 4 6 -7-2 -2 7 -2-7 -7 2 4-6 -5-5 7 1z" fill="#e8401a" stroke="#e8401a" stroke-width="1.5" stroke-linejoin="round"/>`)},
+ {id:'king-winter',season:'winter',name:'ゆきのおうさま',desc:'冬の図鑑の仲間が全員そろうと姿を見せる時間の王さま。雪の結晶をいつも持ち歩いている。',
+  svg:()=>king('#a9c6ff','#5b7fc4',rot(6,a=>`<path d="M80 81 V71 M80 74 l-3 -3 M80 74 l3 -3" stroke="#fff" stroke-width="2.2" stroke-linecap="round" transform="rotate(${a} 80 81)"/>`)+`<circle cx="80" cy="81" r="2" fill="#fff"/>`)},
+];
+const ALL=[...CH,...SPS];
+const spOf=season=>SPS.find(x=>x.season===season);
+function applySeason(){const se=seasonOf(Date.now());if(document.documentElement.dataset.season===se)return;document.documentElement.dataset.season=se;document.querySelector('.deco')?.remove();
+ const SH={spring:['<path d="M20 4C31 11 32 26 20 36C8 26 9 11 20 4Z" fill="#ffb3c9"/><path d="M20 4l-3 5h6z" fill="#fff"/>','<circle cx="20" cy="20" r="7" fill="#ffd9e4"/>'],
+  summer:['<path d="M20 2L24 16L38 20L24 24L20 38L16 24L2 20L16 16Z" fill="#ffd84a"/>','<circle cx="20" cy="20" r="13" fill="none" stroke="#7fcfff" stroke-width="3"/><circle cx="15" cy="15" r="3" fill="#fff"/>'],
+  autumn:['<path d="M20 4C34 10 34 30 20 36C6 30 6 10 20 4Z" fill="#ff9a4a"/><path d="M20 8V36" stroke="#e0742a" stroke-width="2"/>','<circle cx="20" cy="20" r="8" fill="#ffc94a"/>'],
+  winter:['<g stroke="#a9c6ff" stroke-width="3" stroke-linecap="round"><path d="M20 4V36M6 12L34 28M6 28L34 12"/></g>','<circle cx="20" cy="20" r="7" fill="#fff" stroke="#dbe6ff" stroke-width="2"/>']}[se];
+ const P=[[3,7,54,-20],[86,5,42,30],[13,30,32,10],[90,38,58,-35],[1,60,44,45],[83,70,36,0],[8,86,48,-10],[92,88,42,25],[46,2,28,15],[70,18,26,-25],[26,94,30,35],[60,92,38,-15]];
+ const dc=document.createElement('div');dc.className='deco';dc.setAttribute('aria-hidden','true');
+ dc.innerHTML=P.map(([x,y,w,r],i)=>`<svg viewBox="0 0 40 40" style="left:${x}%;top:${y}%;width:${w}px;--r:${r}deg;animation-delay:${-i*1.3}s">${SH[i%2]}</svg>`).join('');
+ document.body.prepend(dc);}
+applySeason();setInterval(()=>{if(document.documentElement.dataset.season!==seasonOf(Date.now())){applySeason();if(!$('#rec').hidden){zkSeason=null;renderRec()}}},60000);
+
+const chBy=id=>ALL.find(c=>c.id===id)||CH[0];
+const svgOf=id=>`<svg viewBox="0 0 100 100" role="img" aria-label="${esc(chBy(id).name)}">${chBy(id).svg()}</svg>`;
+const owned=()=>new Set(D.badges.map(b=>b.char).filter(Boolean));
+const pickChar=season=>{const p=CH.filter(c=>c.season===season);return p[Math.floor(Math.random()*p.length)].id};
+const RANK=['ノーマル','銅','銀','金'],STEP=[3,5,10];
+const rankOf=n=>n>=10?3:n>=5?2:n>=3?1:0;
+const countOf=id=>D.badges.filter(b=>b.char===id).length;
+{const c={};D.badges.forEach(b=>{if(!b.char)b.char=pickChar(seasonOf(new Date(b.date+'T12:00').getTime()));c[b.char]=(c[b.char]||0)+1;if(!b.n)b.n=c[b.char]})}
+let zkSeason=null;
+const medal=(b,big,rib=true)=>`<div class="medal ${b.special?'sp':'r'+rankOf(b.n||1)}${big?' big':''}">${svgOf(b.char)}${rib?`<span class="rib">${b.special?seasonBy(chBy(b.char).season).name+'コンプ':b.weeks+'週間'}</span>`:''}</div>`;
+function renderStreak(){
+  const s=streak(),doneToday=daySet().has(dkey(Date.now()));
+  $('#sNow').textContent=s?`連続 ${s}日`:'今日から始めよう';
+  const left=7-(s%7);
+  $('#sNext').textContent=(doneToday?'今日は達成済み。':'今日完了すると記録されます。')+`次のバッジまで あと${left}日`;
+}
+function logFinish(R){
+  if(R.logged)return;R.logged=1;
+  const last=R.steps[R.steps.length-1],fin=last.doneAt||Date.now();
+  const today=dkey(fin);
+  D.log.push({date:today,at:fin,label:R.label,goal:R.goal,gain:Math.round((last.end-fin)/60000),onTime:fin<=R.goal-0});
+  const s=streak();R.streak=s;
+  if(s>0&&s%7===0&&!D.badges.some(b=>b.date===today&&!b.special)){
+    const season=seasonOf(fin),c=pickChar(season),n=countOf(c)+1,b={weeks:s/7,date:today,char:c,n};
+    D.badges.push(b);R.newBadge=b;R.isNew=n===1;R.rankUp=STEP.includes(n)?rankOf(n):0;
+    const o=owned();
+    const SPx=spOf(season);if(CH.filter(x=>x.season===season).every(x=>o.has(x.id))&&!o.has(SPx.id)){const sp={special:true,date:today,char:SPx.id};D.badges.push(sp);R.spBadge=sp}
+  }
+  save();
+}
+function renderRec(){
+  $('#rcStreak').textContent=streak();$('#rcBest').textContent=bestStreak();$('#rcDays').textContent=daySet().size;
+  $('#rcMedals').innerHTML=D.badges.length?D.badges.slice().reverse().map(b=>`<figure>${medal(b)}<figcaption class="num">${esc(b.date.slice(5).replace('-','/'))}</figcaption></figure>`).join('')
+    :'<p class="empty">7日続けると、ここに最初のバッジが付きます。</p>';
+  const by={};D.log.forEach(l=>{by[l.date]=by[l.date]||l.onTime;});
+  const t=new Date();t.setHours(12,0,0,0);
+  const mon=addDays(t.getTime(),-((t.getDay()+6)%7)-28);
+  let h=['月','火','水','木','金','土','日'].map(x=>`<div class="h">${x}</div>`).join('');
+  for(let k=0;k<35;k++){const ms=addDays(mon,k),key=dkey(ms),fut=ms>t.getTime()+3600000;
+    const cls=key in by?(by[key]?'on':'lt'):'';
+    h+=`<div class="d ${cls}${key===dkey(Date.now())?' today':''}" style="${fut?'opacity:.35':''}" title="${key}">${new Date(ms).getDate()}</div>`}
+  $('#rcCal').innerHTML=h;
+  const o=owned(),cnt=id=>D.badges.filter(b=>b.char===id).length,first=id=>{const b=D.badges.find(b=>b.char===id);return b?b.date.replace(/-/g,'/'):''};
+  const curS=seasonOf(Date.now());zkSeason=zkSeason||curS;
+  $('#zkTabs').innerHTML=SEASONS.map(x=>{const pool=CH.filter(c=>c.season===x.id),got=pool.filter(c=>o.has(c.id)).length;
+    return `<button role="tab" aria-selected="${x.id===zkSeason}" data-s="${x.id}" style="--sc:${x.col}">${x.name}<small class="num">${got}/${pool.length}${o.has(spOf(x.id).id)?'＋特':''}</small></button>`}).join('');
+  const SS=seasonBy(zkSeason),pool=CH.filter(c=>c.season===zkSeason),SPx=spOf(zkSeason);
+  $('#zkCount').textContent=`${SS.months}${zkSeason===curS?'・いまのシーズン':''}`;
+  $('#zkNote').textContent=zkSeason===curS?`いまは${SS.name}のシーズン。バッジをもらうと、${SS.name}の仲間からランダムで1人やってきます。`:`${SS.name}の仲間は${SS.months}にバッジをもらうと出会えます。`;
+  $('#zk').innerHTML=pool.map((c,i)=>o.has(c.id)
+    ?(()=>{const n=cnt(c.id),r=rankOf(n),nx=STEP.find(x=>x>n);
+      return `<article>${medal({char:c.id,n},false,false)}<h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p><span class="rk r${r} num">${RANK[r]}・×${n}</span><div class="cnt num">${nx?`${RANK[rankOf(nx)]}まであと${nx-n}回`:'最高ランク！'}</div><div class="cnt num">${SS.name}No.${i+1}・初ゲット ${first(c.id)}</div></article>`})()
+    :`<article class="sil">${medal({char:c.id,n:1},false,false)}<h3>？？？</h3><p>まだ出会っていない</p><div class="cnt num">${SS.name}No.${i+1}</div></article>`).join('')
+    +(o.has(SPx.id)?`<article class="spc">${medal({special:true,char:SPx.id},false,false)}<div><h3>${esc(SPx.name)}</h3><p>${esc(SPx.desc)}</p><div class="cnt num">${SS.name}の特別・${first(SPx.id)}</div></div></article>`
+    :`<article class="spc sil">${medal({special:true,char:SPx.id},false,false)}<div><h3>${SS.name}の特別なキャラクター</h3><p>${SS.name}の図鑑の${pool.length}人がそろうと会えるらしい…</p></div></article>`);
+  $('#rcLog').innerHTML=D.log.length?D.log.slice(-60).reverse().map(l=>{
+    const d=new Date(l.at),w='日月火水木金土'[d.getDay()];
+    const g=l.gain>0?`予定より${l.gain}分早い`:l.gain<0?`予定より${-l.gain}分おそめ`:'予定どおり';
+    return `<li><span class="num">${d.getMonth()+1}/${d.getDate()}（${w}）</span><span>${esc(l.label)}<small style="color:var(--sub)">　${hm(l.at)} 完了</small></span><span class="g ${l.onTime?'ok':'lt'}">${g}</span></li>`}).join('')
+    :'<li class="empty">まだ記録がありません。準備を最後まで終えると記録されます。</li>';
+}
+
+function goalMs(){
+  const [h,m]=(D.goalTime||'08:30').split(':').map(Number);
+  const d=new Date();d.setHours(h,m,0,0);
+  if(d.getTime()<=Date.now())d.setDate(d.getDate()+1);
+  return d.getTime();
+}
+function plan(goal){
+  let end=goal-D.buffer*60000;
+  const out=[];
+  for(let i=D.steps.length-1;i>=0;i--){
+    const s=D.steps[i],len=Math.max(0,Number(s.min)||0)*60000;
+    out.unshift({name:s.name||'（名前なし）',start:end-len,end});end-=len;
+  }
+  return out;
+}
+
+/* ---------- setup ---------- */
+function renderSteps(){
+  $('#steps').innerHTML=D.steps.map((s,i)=>`<li data-i="${i}">
+   <div class="at num" data-at></div>
+   <input aria-label="予定${i+1}の内容" data-f="name" value="${esc(s.name)}" placeholder="やること">
+   <input aria-label="予定${i+1}の分数" class="min num" data-f="min" type="number" min="1" max="600" inputmode="numeric" value="${esc(s.min)}">
+   <div class="mv"><button data-a="up" aria-label="上へ">↑</button><button data-a="down" aria-label="下へ">↓</button><button data-a="del" aria-label="削除">×</button></div></li>`).join('');
+  renderPlan();
+}
+function renderPlan(){
+  const g=goalMs(),p=plan(g),now=Date.now();
+  document.querySelectorAll('#steps [data-at]').forEach((el,i)=>el.textContent=p[i]?hm(p[i].start):'');
+  $('#endAt').textContent=hm(g);
+  $('#endLabel').textContent=(D.goalLabel||'ゴール')+(D.buffer?`（余裕${D.buffer}分込み）`:'');
+  const tomorrow=new Date(g).getDate()!==new Date().getDate();
+  $('#day').textContent=tomorrow?'※ 明日の '+hm(g)+' として計算中':'';
+  const st=$('#status'),first=p.length?p[0].start:g;
+  if(!p.length){st.className='status ng';st.textContent='予定を1つ以上追加してください';return}
+  if(first>=now){st.className='status ok';st.innerHTML=`<span class="num">${hm(first)}</span> に始めれば間に合います（あと <span class="num">${mins(first-now)}</span> 分）`}
+  else{st.className='status ng';st.innerHTML=`もう <span class="num">${mins(now-first)}</span> 分足りません。どれかを短くするか、削りましょう`+(D.buffer?'（余裕を減らすのも手）':'')}
+}
+function renderTpls(){
+  $('#tpls').innerHTML=(D.templates||[]).map((t,i)=>`<span><button data-load="${i}">${esc(t.name)}</button><button class="x" data-deltpl="${i}" aria-label="${esc(t.name)}を削除">×</button></span>`).join('');
+}
+function loadForm(){
+  $('#gt').value=D.goalTime;$('#gl').value=D.goalLabel;$('#buf').value=String(D.buffer);
+  renderSteps();renderTpls();renderStreak();
+}
+$('#steps').addEventListener('input',e=>{
+  const li=e.target.closest('li');if(!li)return;
+  const s=D.steps[+li.dataset.i],f=e.target.dataset.f;
+  s[f]=f==='min'?Math.max(0,parseInt(e.target.value,10)||0):e.target.value;
+  save();renderPlan();
+});
+$('#steps').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const i=+b.closest('li').dataset.i,a=b.dataset.a,S=D.steps;
+  if(a==='del')S.splice(i,1);
+  if(a==='up'&&i>0)[S[i-1],S[i]]=[S[i],S[i-1]];
+  if(a==='down'&&i<S.length-1)[S[i+1],S[i]]=[S[i],S[i+1]];
+  save();renderSteps();
+});
+$('#add').onclick=()=>{D.steps.push({name:'',min:5});save();renderSteps();
+  const ins=document.querySelectorAll('#steps input[data-f=name]');ins[ins.length-1].focus()};
+$('#gt').oninput=e=>{if(e.target.value){D.goalTime=e.target.value;save();renderPlan()}};
+$('#gl').oninput=e=>{D.goalLabel=e.target.value;save();renderPlan()};
+$('#buf').onchange=e=>{D.buffer=+e.target.value;save();renderPlan()};
+
+let tplArm=null;
+$('#saveTpl').onclick=()=>{
+  const name=(D.goalLabel||'ルーティン')+' '+D.goalTime;
+  D.templates=D.templates||[];
+  const copy={name,goalTime:D.goalTime,goalLabel:D.goalLabel,buffer:D.buffer,steps:D.steps.map(s=>({...s}))};
+  const k=D.templates.findIndex(t=>t.name===name);
+  if(k>=0)D.templates[k]=copy;else D.templates.push(copy);
+  save();renderTpls();
+  $('#saveTpl').textContent='保存しました';setTimeout(()=>$('#saveTpl').textContent='いまの内容を保存',1500);
+};
+$('#tpls').addEventListener('click',e=>{
+  const l=e.target.closest('[data-load]'),d=e.target.closest('[data-deltpl]');
+  if(l){const t=D.templates[+l.dataset.load];Object.assign(D,{goalTime:t.goalTime,goalLabel:t.goalLabel,buffer:t.buffer,steps:t.steps.map(s=>({...s}))});save();loadForm()}
+  if(d){const i=+d.dataset.deltpl;
+    if(tplArm===i){D.templates.splice(i,1);tplArm=null;save();renderTpls()}
+    else{tplArm=i;d.textContent='消す？';setTimeout(()=>{tplArm=null;renderTpls()},2500)}}
+});
+
+/* ---------- sound & notify ---------- */
+let ac=null;
+function beep(pattern){
+  try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    let t=ac.currentTime;
+    pattern.forEach(([f,d])=>{const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=f;o.type='sine';
+      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.3,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+      o.connect(g).connect(ac.destination);o.start(t);o.stop(t+d+.05);t+=d+.08});
+  }catch(e){}
+}
+const soft=()=>beep([[880,.15]]);
+const alarm=()=>{beep([[988,.25],[784,.25],[988,.25],[784,.4]]);try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300])}catch(e){}};
+function notify(title,body){try{if('Notification'in window&&Notification.permission==='granted')new Notification(title,{body})}catch(e){}}
+if('Notification'in window&&Notification.permission==='default')$('#notif').hidden=false;
+$('#notif').onclick=async()=>{try{await Notification.requestPermission()}catch(e){}$('#notif').hidden=true};
+
+let lock=null;
+async function wake(){try{lock=await navigator.wakeLock.request('screen')}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(D.run&&document.visibilityState==='visible')wake()});
+
+/* ---------- run ---------- */
+function show(id){['setup','run','fin','rec'].forEach(s=>$('#'+s).hidden=s!==id);if(id==='setup')renderStreak();if(id==='rec')renderRec();window.scrollTo(0,0)}
+let recFrom='setup';
+$('#zkTabs').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(b){zkSeason=b.dataset.s;renderRec()}});
+$('#openRec').onclick=()=>{recFrom='setup';show('rec')};
+$('#finRec').onclick=()=>{recFrom='fin';show('rec')};
+$('#recBack').onclick=()=>show(recFrom==='fin'&&D.run?'fin':'setup');
+$('#start').onclick=()=>{
+  if(!D.steps.length)return;
+  const g=goalMs();
+  D.run={goal:g,label:D.goalLabel||'ゴール',steps:plan(g).map(s=>({...s,done:false,doneAt:0})),alerted:{}};
+  save();beep([[660,.12],[880,.18]]);wake();show('run');tick();
+};
+const curIdx=()=>D.run.steps.findIndex(s=>!s.done);
+$('#doneBtn').onclick=()=>{const i=curIdx();if(i<0)return;D.run.steps[i].done=true;D.run.steps[i].doneAt=Date.now();save();beep([[784,.1],[1046,.18]]);tick()};
+$('#undo').onclick=()=>{const S=D.run.steps;let i=curIdx();i=i<0?S.length-1:i-1;if(i>=0){S[i].done=false;save();show('run');tick()}};
+let stopArm=0;
+$('#stop').onclick=()=>{
+  if(Date.now()-stopArm<3000){D.run=null;save();try{lock&&lock.release()}catch(e){}show('setup');renderPlan();$('#stop').textContent='やめる';return}
+  stopArm=Date.now();$('#stop').textContent='もう一度押すと中止';setTimeout(()=>$('#stop').textContent='やめる',3000);
+};
+$('#back').onclick=()=>{D.run=null;save();show('setup');renderPlan()};
+
+function tick(){
+  const R=D.run;if(!R)return;
+  const now=Date.now(),S=R.steps,i=curIdx();
+  const firstStart=S[0].start,total=R.goal-firstStart;
+  if(i<0){
+    const last=S[S.length-1],gain=Math.round((last.end-last.doneAt)/60000),left=R.goal-now;
+    $('#fBig').textContent=gain>0?`予定より ${gain}分 早い！`:gain<0?`予定より ${-gain}分 おそめ`:'予定どおり！';
+    $('#fSub').textContent=left>0?`${R.label}（${hm(R.goal)}）まで あと ${mins(left)}分`:`${R.label}の時刻（${hm(R.goal)}）です`;
+    const fresh=!R.logged;logFinish(R);
+    const nb=R.newBadge&&typeof R.newBadge==='object'?R.newBadge:null;
+    $('#fBadge').innerHTML=nb?`${medal(nb,true)}<p class="get">${nb.weeks}週間 続きました！</p><p>「${esc(chBy(nb.char).name)}」をゲット！${R.isNew?'<em>NEW</em>':`（${nb.n}回目）`}</p>${R.rankUp?`<p class="get">縁が${RANK[R.rankUp]}色にランクアップ！</p>`:''}`
+      +(R.spBadge?`${medal(R.spBadge,true)}<p class="get">${seasonBy(chBy(R.spBadge.char).season).name}の図鑑コンプリート！</p><p>特別なキャラクター「${esc(chBy(R.spBadge.char).name)}」が来てくれた！</p>`:''):'';
+    const s=R.streak||streak();/**/
+    $('#fStreak').textContent=`連続 ${s}日`+(R.newBadge?'':`・次のバッジまで あと${7-(s%7)}日`);
+    if(fresh){show('fin');R.newBadge?beep([[784,.12],[988,.12],[1175,.12],[1568,.5]]):beep([[784,.12],[988,.12],[1175,.3]])}
+    else if($('#fin').hidden&&$('#rec').hidden)show('fin');
+    return;
+  }
+  const s=S[i],dur=s.end-s.start,rem=s.end-now;
+  $('#rGoal').textContent=`${hm(R.goal)} ${R.label}`;
+  const gl=R.goal-now;
+  $('#rGoalLeft').textContent=gl>0?`まで ${mmss(gl/1000)}`:`${mins(-gl)}分すぎ`;
+  $('#rBar').style.width=Math.min(100,Math.max(0,(now-firstStart)/total*100))+'%';
+  $('#rName').textContent=s.name;
+  const ring=$('#ring'),frac=dur>0?Math.min(1,Math.max(0,rem/dur)):0;
+  let c='var(--red)';if(frac<.2)c='var(--late)';
+  ring.style.setProperty('--p',rem>0?frac:1);ring.style.setProperty('--c',rem>0?c:'var(--late)');
+  ring.classList.toggle('over',rem<=0);
+  $('#rLeft').textContent=rem>0?mmss(rem/1000):'+'+mmss(-rem/1000);
+  $('#rUntil').textContent=rem>0?`${hm(s.end)} まで`:'時間オーバー';
+  const later=S.slice(i+1).reduce((a,x)=>a+(x.end-x.start),0);
+  const projected=Math.max(now,s.end)+later,late=projected-R.goal,msg=$('#rMsg');
+  if(rem>dur){msg.style.color='var(--grn)';msg.textContent=`まだ開始予定（${hm(s.start)}）前。いま始めれば余裕が増えます`}
+  else if(rem>0){msg.style.color='var(--sub)';msg.textContent=rem<=60000?'あと1分！そろそろ切り上げよう':''}
+  else if(late>0){msg.style.color='var(--late)';msg.textContent=`このままだと ${mins(late)}分 遅れそう。次を短くしよう`}
+  else{msg.style.color='var(--late)';msg.textContent=`${mins(-rem)}分 押してます（余裕で吸収できる範囲）`}
+  $('#rNext').innerHTML=S[i+1]?`次は <span>${esc(S[i+1].name)}</span>`:`次は <span>${esc(R.label)}</span>`;
+  $('#mini').innerHTML=S.map((x,k)=>`<li class="${x.done?'ok':k===i?'cur':''}"><span>${x.done?'✓':k===i?'▶':''}</span><span class="num">${hm(x.start)}</span>${x.done?`<s>${esc(x.name)}</s>`:`<span>${esc(x.name)}</span>`}</li>`).join('');
+  const A=R.alerted;
+  if(rem<=60000&&rem>0&&dur>60000&&!A[i+'w']){A[i+'w']=1;save();soft()}
+  if(rem<=0&&!A[i+'e']){A[i+'e']=1;save();
+    if(-rem<5000){alarm();notify(`「${s.name}」の時間です`,S[i+1]?`次は ${S[i+1].name}`:`次は ${R.label}`)}}
+}
+
+loadForm();
+if(D.run){show(curIdx()<0?'fin':'run');if(curIdx()>=0)wake();tick()}
+setInterval(()=>{if(D.run)tick();else renderPlan()},1000);
+
+/* ---------- login & cloud save ---------- */
+const syncEl=$('#sync');
+const setSync=(t,c)=>{syncEl.textContent=t;syncEl.className='sync '+(c||'')};
+let who='';
+function merge(a,b){
+  const newer=(b.updatedAt||0)>(a.updatedAt||0)?b:a;
+  const log=new Map();[...(a.log||[]),...(b.log||[])].forEach(l=>log.set(l.at,l));
+  const bk=x=>[x.date,x.char,x.special?'s':x.weeks].join('|');
+  const bd=new Map();[...(a.badges||[]),...(b.badges||[])].forEach(x=>{if(!bd.has(bk(x)))bd.set(bk(x),x)});
+  return {...newer,log:[...log.values()].sort((x,y)=>x.at-y.at),
+    badges:[...bd.values()].sort((x,y)=>x.date<y.date?-1:x.date>y.date?1:(x.special?1:0)-(y.special?1:0)),
+    updatedAt:Math.max(a.updatedAt||0,b.updatedAt||0)};
+}
+function refresh(){
+  if(!$('#setup').hidden){
+    if(D.run){show(curIdx()<0?'fin':'run');tick();return}
+    if(!document.activeElement||!$('#setup').contains(document.activeElement)||document.activeElement.tagName==='BUTTON')loadForm();else renderPlan();
+    renderStreak();
+  }else if(!$('#rec').hidden)renderRec();
+  else if(D.run)tick();else show('setup');
+}
+/* ===== Firebase の設定（README の手順で取得した値に置きかえる） ===== */
+const FIREBASE_CONFIG={
+  apiKey:"",
+  authDomain:"",
+  projectId:"",
+  appId:""
+};
+(async()=>{
+  const btn=$('#authBtn');
+  if(!FIREBASE_CONFIG.apiKey){setSync('ログイン機能はまだ設定されていません。記録はこの端末のブラウザだけに保存されます');return}
+  const base='https://www.gstatic.com/firebasejs/10.12.2/';
+  let fa,fauth,ffs;
+  try{[fa,fauth,ffs]=await Promise.all([import(base+'firebase-app.js'),import(base+'firebase-auth.js'),import(base+'firebase-firestore.js')])}
+  catch(e){setSync('ログイン機能を読みこめませんでした。記録はこの端末に保存されます','err');return}
+  const app=fa.initializeApp(FIREBASE_CONFIG),auth=fauth.getAuth(app),fs=ffs.getFirestore(app);
+  let current=null,unsub=null,lastJSON='',writing=false,again=false,timer=null,ready=false,ref=null,label='';
+  btn.onclick=async()=>{
+    if(current){try{await fauth.signOut(auth)}catch(e){}return}
+    const p=new fauth.GoogleAuthProvider();
+    try{await fauth.signInWithPopup(auth,p)}
+    catch(e){if(e&&(e.code==='auth/popup-blocked'||e.code==='auth/operation-not-supported-in-this-environment'))fauth.signInWithRedirect(auth,p);
+      else if(e&&e.code!=='auth/popup-closed-by-user'&&e.code!=='auth/cancelled-popup-request')setSync('ログインできませんでした（'+(e.code||'エラー')+'）','err')}
+  };
+  async function write(){
+    if(!ref)return;
+    if(writing){again=true;return}
+    const json=JSON.stringify(D);if(json===lastJSON){setSync(label+'保存済み','on');return}
+    writing=true;setSync(label+'保存中…','busy');
+    try{await ffs.setDoc(ref,{v:1,updatedAt:D.updatedAt||Date.now(),data:json});lastJSON=json;setSync(label+'保存済み','on')}
+    catch(e){setSync('クラウドに保存できませんでした（'+(e.code||'エラー')+'）。この端末には保存されています','err')}
+    writing=false;if(again){again=false;write()}
+  }
+  fauth.onAuthStateChanged(auth,u=>{
+    if(unsub){unsub();unsub=null}
+    current=u;ready=false;ref=null;lastJSON='';btn.hidden=false;
+    if(!u){push=()=>{};btn.textContent='Googleでログイン';setSync('ログインしていません。記録はこの端末のブラウザだけに保存されます');return}
+    btn.textContent='ログアウト';
+    label=(u.displayName?u.displayName+' さんで':'')+'ログイン中・';
+    setSync(label+'読みこみ中…','busy');
+    ref=ffs.doc(fs,'users',u.uid);
+    push=()=>{if(!ready)return;clearTimeout(timer);setSync(label+'保存中…','busy');timer=setTimeout(write,1200)};
+    const slow=setTimeout(()=>{if(!ready)setSync(label+'クラウドにつながりません。この端末には保存されています','err')},10000);
+    unsub=ffs.onSnapshot(ref,{includeMetadataChanges:false},snap=>{
+      if(snap.metadata.hasPendingWrites)return;
+      clearTimeout(slow);
+      let r=null;
+      if(snap.exists()){try{r=JSON.parse(snap.data().data)}catch(e){}}
+      if(r&&typeof r==='object'&&Array.isArray(r.steps)){
+        const rs=JSON.stringify(r);
+        if(rs!==lastJSON){
+          D=merge(D,r);lastJSON=rs;D.log=D.log||[];D.badges=D.badges||[];D.templates=D.templates||[];
+          try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){}
+          refresh();
+        }
+      }
+      if(!ready){ready=true;write()}else setSync(label+'保存済み','on');
+    },e=>{clearTimeout(slow);setSync('クラウドとの接続が切れました（'+(e.code||'エラー')+'）。この端末には保存されています','err')});
+  });
+})();
+}
+</script>
+</body>
+</html>
